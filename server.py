@@ -39,8 +39,12 @@ async def recognize(image: UploadFile = File(...)):
         if not raw:
             raise HTTPException(status_code=400, detail="empty image")
 
-        b64 = base64.b64encode(raw).decode("utf-8")
-        mime = image.content_type or "image/jpeg"
+b64 = base64.b64encode(raw).decode("utf-8")
+
+mime = image.content_type or "image/jpeg"
+if mime not in ["image/jpeg", "image/png", "image/webp"]:
+    mime = "image/jpeg"
+
 
         prompt = """
 あなたは、変体仮名・くずし字の候補提示補助です。
@@ -58,7 +62,7 @@ async def recognize(image: UploadFile = File(...)):
 """
 
         resp = client.responses.create(
-            model="gpt-5",
+            model="gpt-5-mini",
             input=[
                 {
                     "role": "user",
