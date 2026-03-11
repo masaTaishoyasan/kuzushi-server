@@ -58,6 +58,7 @@ def extract_json_block(text: str) -> dict:
     raise ValueError("JSONを抽出できませんでした。")
 
 
+#ここから
 def normalize_image(img: Image.Image) -> Image.Image:
     """
     認識前の軽い前処理
@@ -65,13 +66,17 @@ def normalize_image(img: Image.Image) -> Image.Image:
     - グレースケール
     - 余白付き正方形化
     - リサイズ
-    - コントラスト少し強化
+    - コントラスト強化
+    - 二値化
     """
-    img = ImageOps.exif_transpose(img)
-    img = img.convert("L")  # グレースケール
 
-    # 自動反転を試したい場合はコメントを外す
-    # img = ImageOps.invert(img)
+    img = ImageOps.exif_transpose(img)
+
+    # グレースケール
+    img = img.convert("L")
+
+    # コントラスト自動調整
+    img = ImageOps.autocontrast(img)
 
     # 元画像の周囲に少し余白を加える
     bbox = img.getbbox()
@@ -81,7 +86,7 @@ def normalize_image(img: Image.Image) -> Image.Image:
     # 正方形キャンバスへ中央配置
     w, h = img.size
     side = max(w, h) + 40
-    canvas = Image.new("L", (side, side), color=255)  # 白背景
+    canvas = Image.new("L", (side, side), color=255)
     x = (side - w) // 2
     y = (side - h) // 2
     canvas.paste(img, (x, y))
@@ -89,10 +94,11 @@ def normalize_image(img: Image.Image) -> Image.Image:
     # サイズ統一
     canvas = canvas.resize((512, 512))
 
-    # コントラストを少し上げる
-    canvas = ImageEnhance.Contrast(canvas).enhance(1.5)
+    # 二値化（重要）
+    canvas = canvas.point(lambda x: 0 if x < 140 else 255)
 
     return canvas
+    #ここまで
 
 
 def build_prompt(input_mode: str) -> str:
