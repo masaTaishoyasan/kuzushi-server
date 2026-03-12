@@ -5,9 +5,12 @@ from PIL import Image, ImageOps, ImageEnhance
 from io import BytesIO
 from openai import OpenAI
 import os
-import json
 import base64
 import re
+import json
+
+with open("kana_dictionary.json", "r", encoding="utf-8") as f:
+    KANA_DICT = json.load(f)
 
 # =========================
 # 設定
