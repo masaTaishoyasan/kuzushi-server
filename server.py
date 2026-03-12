@@ -317,7 +317,6 @@ def call_openai_with_image(img: Image.Image, input_mode: str) -> dict:
 def root():
     return {"message": "KuzushiReader API is running"}
 
-
 @app.post("/recognize")
 async def recognize(
     file: UploadFile = File(...),
@@ -327,21 +326,20 @@ async def recognize(
         contents = await file.read()
         img = Image.open(BytesIO(contents))
 
-        #ここから
-normalized = normalize_image(img)
-result = call_openai_with_image(normalized, input_mode)
+        normalized = normalize_image(img)
+        result = call_openai_with_image(normalized, input_mode)
 
-dictionary_hits = dictionary_candidates_from_readings(result["readings"])
-result["dictionary_candidates"] = dictionary_hits
+        dictionary_hits = dictionary_candidates_from_readings(result["readings"])
+        result["dictionary_candidates"] = dictionary_hits
 
-return JSONResponse(
-    content={
-        "success": True,
-        "input_mode": input_mode,
-        "result": result
-    }
-)
-#ここまで
+        return JSONResponse(
+            content={
+                "success": True,
+                "input_mode": input_mode,
+                "result": result
+            }
+        )
+
     except ValueError as e:
         raise HTTPException(status_code=500, detail=f"JSON解析エラー: {str(e)}")
     except Exception as e:
