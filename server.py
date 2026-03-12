@@ -90,6 +90,15 @@ def normalize_image(img: Image.Image) -> Image.Image:
 
     return canvas
 
+def dictionary_candidates_from_readings(readings: list[str]) -> list[list[str]]:
+    results = []
+    for r in readings:
+        if r in KANA_DICT:
+            results.append(KANA_DICT[r])
+        else:
+            results.append([])
+    return results
+
 
 def build_prompt(input_mode: str) -> str:
     common_rule = """
@@ -318,17 +327,21 @@ async def recognize(
         contents = await file.read()
         img = Image.open(BytesIO(contents))
 
-        normalized = normalize_image(img)
-        result = call_openai_with_image(normalized, input_mode)
+        #ここから
+normalized = normalize_image(img)
+result = call_openai_with_image(normalized, input_mode)
 
-        return JSONResponse(
-            content={
-                "success": True,
-                "input_mode": input_mode,
-                "result": result
-            }
-        )
+dictionary_hits = dictionary_candidates_from_readings(result["readings"])
+result["dictionary_candidates"] = dictionary_hits
 
+return JSONResponse(
+    content={
+        "success": True,
+        "input_mode": input_mode,
+        "result": result
+    }
+)
+#ここまで
     except ValueError as e:
         raise HTTPException(status_code=500, detail=f"JSON解析エラー: {str(e)}")
     except Exception as e:
