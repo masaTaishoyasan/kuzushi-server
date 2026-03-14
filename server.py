@@ -309,8 +309,8 @@ def sanitize_result(result: dict) -> dict:
     }
 
 
-def call_openai_with_image(img: Image.Image, input_mode: str) -> dict:
-    prompt = build_prompt(input_mode)
+def call_openai_with_image(img: Image.Image) -> dict:
+    prompt = build_prompt()
     b64 = image_to_base64(img)
 
     response = client.responses.create(
@@ -351,7 +351,7 @@ async def recognize(
         img = Image.open(BytesIO(contents))
 
         normalized = normalize_image(img)
-        result = call_openai_with_image(normalized, input_mode)
+        result = call_openai_with_image(normalized)
 
         dictionary_hits = dictionary_candidates_from_readings(result["readings"])
         result["dictionary_candidates"] = dictionary_hits
