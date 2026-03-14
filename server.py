@@ -1,7 +1,7 @@
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from PIL import Image, ImageOps, ImageEnhance
+from PIL import Image, ImageOps
 from io import BytesIO
 from openai import OpenAI
 import os
@@ -43,9 +43,6 @@ def image_to_base64(img: Image.Image) -> str:
 
 
 def extract_json_block(text: str) -> dict:
-    """
-    応答文字列からJSONをできるだけ安全に抜き出す
-    """
     text = text.strip()
 
     fenced = re.search(r"```json\s*(\{.*?\})\s*```", text, re.DOTALL)
@@ -60,15 +57,6 @@ def extract_json_block(text: str) -> dict:
 
 
 def normalize_image(img: Image.Image) -> Image.Image:
-    """
-    認識前の軽い前処理
-    - EXIF補正
-    - グレースケール
-    - 自動コントラスト
-    - 余白付き正方形化
-    - リサイズ
-    - 二値化
-    """
     img = ImageOps.exif_transpose(img)
     img = img.convert("L")
     img = ImageOps.autocontrast(img)
@@ -86,9 +74,10 @@ def normalize_image(img: Image.Image) -> Image.Image:
     canvas.paste(img, (x, y))
 
     canvas = canvas.resize((512, 512))
-    canvas = canvas.point(lambda x: 0 if x < 140 else 255)
+    canvas = canvas.point(lambda px: 0 if px < 140 else 255)
 
     return canvas
+
 
 def dictionary_candidates_from_readings(readings: list[str]) -> list[list[str]]:
     results = []
@@ -262,31 +251,37 @@ def build_prompt() -> str:
   "note": "優先確認候補を提示"
 }
 """
-    return common_rule + "\\n\\n" + extra.strip()
 
 
 def sanitize_result(result: dict) -> dict:
     """
-    AIの返答揺れを吸収して、必ずSwift側が読める形に整える
+    新しい prompt の返答を Swift 側が読める旧形式へ整える
     """
-    row_guess = result.get("row_guess", [])
-    readings = result.get("readings", [])
-    source_kanji = result.get("source_kanji", [])
-    shapes = result.get("shapes", [])
+    reading_guess = result.get("reading_guess", [])
+    source_kanji_hint = result.get("source_kanji_hint", [])
+    shape_reasons = result.get("shape_reasons", [])
     note = result.get("note", "")
 
-    if not isinstance(row_guess, list):
-        row_guess = []
-    if not isinstance(readings, list):
-        readings = []
-    if not isinstance(source_kanji, list):
-        source_kanji = []
-    if not isinstance(shapes, list):
-        shapes = []
+    if not isinstance(reading_guess, list):
+        reading_guess = []
+    if not isinstance(source_kanji_hint, list):
+        source_kanji_hint = []
+    if not isinstance(shape_reasons, list):
+        shape_reasons = []
     if not isinstance(note, str):
         note = str(note)
 
-    max_len = max(len(readings), len(source_kanji), len(shapes), 1)
+    # source_kanji_hint は [["計","介"], ["己","古"]] のような形を想定
+    normalized_hints = []
+    for item in source_kanji_hint:
+        if isinstance(item, list):
+            normalized_hints.append([str(x) for x in item if str(x).strip()])
+        elif item is None:
+            normalized_hints.append([])
+        else:
+            normalized_hints.append([str(item)])
+
+    max_len = max(len(reading_guess), len(normalized_hints), len(shape_reasons), 1)
 
     def pad_list(lst, fill="不明"):
         lst = [str(x) for x in lst]
@@ -294,16 +289,29 @@ def sanitize_result(result: dict) -> dict:
             lst += [fill] * (max_len - len(lst))
         return lst[:max_len]
 
-    readings = pad_list(readings, "不明")
-    source_kanji = pad_list(source_kanji, "不明")
-    shapes = pad_list(shapes, "不明")
+    def pad_nested(lst):
+        lst = list(lst)
+        if len(lst) < max_len:
+            lst += [[] for _ in range(max_len - len(lst))]
+        return lst[:max_len]
 
-    row_guess = [str(x) for x in row_guess][:2]
+    readings = pad_list(reading_guess, "不明")
+    shapes = pad_list(shape_reasons, "不明")
+    source_kanji_hint = pad_nested(normalized_hints)
+
+    # Swift 側互換のため、先頭候補だけ source_kanji に入れる
+    source_kanji = []
+    for hints in source_kanji_hint:
+        if hints:
+            source_kanji.append(hints[0])
+        else:
+            source_kanji.append("不明")
 
     return {
-        "row_guess": row_guess,
+        "row_guess": [],
         "readings": readings,
         "source_kanji": source_kanji,
+        "source_kanji_hint": source_kanji_hint,
         "shapes": shapes,
         "note": note
     }
@@ -341,6 +349,7 @@ def call_openai_with_image(img: Image.Image) -> dict:
 def root():
     return {"message": "KuzushiReader API is running"}
 
+
 @app.post("/recognize")
 async def recognize(
     file: UploadFile = File(...),
@@ -368,4 +377,3 @@ async def recognize(
         raise HTTPException(status_code=500, detail=f"JSON解析エラー: {str(e)}")
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"認識処理エラー: {str(e)}")
-
